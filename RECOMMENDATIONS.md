@@ -352,6 +352,57 @@ warns:
 `--scrim 0.6` to `0.7` fixes it, and on foggy or overcast art the darkening
 tends to read as weather rather than as an overlay.
 
+### Setting the type by hand — Scribus
+
+`cover.py` sets type well enough to proof with, but it is a script placing
+strings, not a layout program: it cannot kern a title, hang a quotation mark,
+or nudge the author's name off the cart it happens to be sitting on. And it is
+stuck with Times-Roman, because reportlab reads only TrueType outlines and EB
+Garamond ships as CFF OpenType.
+
+**Scribus** is the free answer — GPL, cross-platform, and the only open-source
+program that does proper print layout: precise millimetre placement, CMYK, spot
+colours, bleed and registration marks, and real PDF/X-1a, X-3 and X-4 export.
+It is genuinely the InDesign substitute rather than an approximation of one.
+
+```bash
+flatpak install flathub net.scribus.Scribus
+```
+
+The handoff is designed for: every text element can be suppressed on its own,
+so you keep whatever `cover.py` gets right and set the rest by hand.
+
+| flag | omits |
+|---|---|
+| `--no-text` | all of it — artwork only |
+| `--no-title` | the title |
+| `--no-author` | the author's name |
+| `--no-spine` | the spine lettering |
+| `--no-blurb` | the back-cover copy |
+
+A workflow that works:
+
+1. `./tools/cover.py --wrap art/x.png --no-text --guides` — a wrap at the exact
+   finished size with fold lines and safe areas marked.
+2. New Scribus document at the same dimensions, with bleed set to match
+   `cover.bleed`.
+3. Place the PDF as an image, then set type in frames over it. The guides tell
+   you where the folds are; delete that layer before exporting.
+4. Export as PDF/X-3, converting to CMYK with a real profile if it is going to
+   a commercial press.
+
+Or keep the parts that are fine — the blurb and spine are rarely worth
+re-setting — and pass `--no-title --no-author` to hand-set only the display type.
+
+**Other free options.** *Inkscape* is a reasonable second choice if the cover is
+artwork-led rather than type-led: it is free, SVG-native and pleasant to nudge
+things in, but its CMYK and PDF/X support is well behind Scribus's. LaTeX with
+`tikz` is already in this toolchain and can place a cover to a tenth of a
+millimetre, if you would rather script it than drag it. *Affinity Publisher* is
+the usual paid InDesign alternative and is a one-off purchase rather than a
+subscription, but there is no native Linux build, so it is not really an option
+here.
+
 ### Colour
 
 ComfyUI gives sRGB; presses are CMYK, and saturated blues and greens dull

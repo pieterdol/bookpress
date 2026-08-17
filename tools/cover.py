@@ -47,6 +47,9 @@ from bookspec import mm
 
 MIN_SPINE_TEXT = 6.0  # mm; below this the spine is too narrow to letter
 GROUND = (0.09, 0.09, 0.11)  # panel colour where no art covers
+INK_LIGHT = (1.0, 1.0, 1.0)
+INK_DARK  = (0.10, 0.10, 0.12)
+GROUND_LIGHT = (0.93, 0.92, 0.89)  # warm off-white, for a spine band under dark ink
 TARGET_DPI = 300
 
 
@@ -163,19 +166,43 @@ def fill_panel(c, img_path: Path, x, y, w, h, warn: list[str], quality: int = 92
         c.drawImage(ImageReader(img), mm(x), mm(y), mm(w), mm(h))
 
 
-def band_luminance(img_path: Path, frac_lo: float, frac_hi: float) -> float:
-    """Mean perceived luminance (0-1) of a horizontal band of the art.
+def band_luminance(
+    img_path: Path, frac_lo: float, frac_hi: float,
+    x_lo: float = 0.0, x_hi: float = 1.0,
+) -> float:
+    """Mean perceived luminance (0-1) of a rectangle of the art.
 
-    frac_lo/frac_hi are measured from the BOTTOM of the image, matching the
-    PDF coordinate system the type is placed in.
+    frac_lo/frac_hi are measured from the BOTTOM of the image, matching the PDF
+    coordinate system the type is placed in. x_lo/x_hi select a panel: on a
+    wraparound the front cover is only the right-hand slice of the image, and
+    averaging across the whole width would answer a question nobody asked.
     """
     img = Image.open(img_path).convert("L")
     w, h = img.size
     top = int(h * (1.0 - frac_hi))
     bot = int(h * (1.0 - frac_lo))
-    band = img.crop((0, max(0, top), w, min(h, max(bot, top + 1))))
-    px = list(band.resize((64, 16)).getdata())
+    left = int(w * x_lo)
+    right = int(w * x_hi)
+    band = img.crop(
+        (left, max(0, top), max(right, left + 1), min(h, max(bot, top + 1)))
+    )
+    px = band.resize((64, 16)).tobytes()   # 'L' mode: one byte per pixel
     return sum(px) / len(px) / 255.0
+
+
+def pick_ink(lum: float, choice: str) -> tuple[float, float, float]:
+    """Type colour for art of this luminance.
+
+    Pale art has two fixes and they are not equal. Darkening the picture until
+    white type reads will work, but on something delicate — misty, high-key,
+    low-contrast — it destroys the quality that made the image worth using.
+    Setting the type dark instead costs the image nothing.
+    """
+    if choice == "light":
+        return INK_LIGHT
+    if choice == "dark":
+        return INK_DARK
+    return INK_DARK if lum > 0.55 else INK_LIGHT
 
 
 def scrim(c, x, y, w, h, strength: float, from_top: bool, fade: str | None = None) -> None:
@@ -249,7 +276,7 @@ def guides(c, wr: Wrap) -> None:
     c.restoreState()
 
 
-def spine_text(c, wr: Wrap, font: str, direction: str) -> None:
+def spine_text(c, wr: Wrap, font: str, direction: str, ink) -> None:
     s = wr.spec
     if wr.spine < MIN_SPINE_TEXT:
         return
@@ -275,12 +302,12 @@ def spine_text(c, wr: Wrap, font: str, direction: str) -> None:
     # German direction. Both are correct; a shelf of mixed ones is not.
     c.rotate(-90 if direction == "down" else 90)
     c.setFont(font, size)
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColorRGB(*ink)
     c.drawCentredString(0, -size * 0.35, f"{title}   {author}")
     c.restoreState()
 
 
-def back_text(c, wr: Wrap, font: str, blurb: Path) -> None:
+def back_text(c, wr: Wrap, font: str, blurb: Path, ink) -> None:
     """Set the back-cover copy, wrapped inside the safe area."""
     s = wr.spec
     x = wr.back_x + s.safe
@@ -307,7 +334,7 @@ def back_text(c, wr: Wrap, font: str, blurb: Path) -> None:
             lines.append(cur)
 
     c.setFont(font, size)
-    c.setFillColorRGB(0.92, 0.92, 0.92)
+    c.setFillColorRGB(*ink)
     step = lead / (72.0 / 25.4)
     y = wr.panel_y + wr.th * 0.78
     for line in lines:
@@ -318,21 +345,24 @@ def back_text(c, wr: Wrap, font: str, blurb: Path) -> None:
         y -= step
 
 
-def cover_text(c, wr: Wrap, font: str) -> None:
+def cover_text(c, wr: Wrap, font: str, ink, show_title: bool, show_author: bool) -> None:
     s = wr.spec
     fx = wr.front_x + s.safe
     fw = wr.tw - 2 * s.safe
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColorRGB(*ink)
 
     size = 26.0
     title = s.book["title"]
     while size > 10 and pdfmetrics.stringWidth(title, font, size) > mm(fw):
         size -= 0.5
-    c.setFont(font, size)
-    c.drawCentredString(mm(fx + fw / 2), mm(wr.panel_y + wr.th * 0.72), title)
+    if show_title:
+        c.setFont(font, size)
+        c.drawCentredString(mm(fx + fw / 2), mm(wr.panel_y + wr.th * 0.72), title)
 
-    c.setFont(font, size * 0.5)
-    c.drawCentredString(mm(fx + fw / 2), mm(wr.panel_y + wr.th * 0.14), s.book["author"])
+    if show_author:
+        c.setFont(font, size * 0.5)
+        c.drawCentredString(mm(fx + fw / 2), mm(wr.panel_y + wr.th * 0.14),
+                            s.book["author"])
 
 
 # --------------------------------------------------------------------- main --
@@ -362,6 +392,15 @@ def main() -> None:
     ap.add_argument("--pages", type=int, help="override the measured page count")
     ap.add_argument("--guides", action="store_true", help="overlay folds and safe areas")
     ap.add_argument("--no-text", action="store_true", help="art only, set type elsewhere")
+    ap.add_argument("--no-title", action="store_true")
+    ap.add_argument("--no-author", action="store_true")
+    ap.add_argument("--no-spine", action="store_true")
+    ap.add_argument("--no-blurb", action="store_true",
+                    help="omit individual elements — use when you intend to set that "
+                         "part by hand in Scribus over the exported artwork")
+    ap.add_argument("--ink", default="auto", choices=("auto", "light", "dark"),
+                    help="type colour. auto measures the art under the title: pale "
+                         "art gets dark type rather than a scrim that would flatten it")
     ap.add_argument("--font", default="EB Garamond")
     ap.add_argument("--spine-direction", choices=("down", "up"), default="down")
     ap.add_argument("--jpeg-quality", type=int, default=92, metavar="Q",
@@ -420,16 +459,28 @@ def main() -> None:
     # White type on a pale sky is the commonest way an otherwise good cover
     # fails, and it is obvious on the page and invisible in the terminal. Check
     # the two bands the type actually lands in and say so.
+    # On a wraparound the front cover is only the right-hand slice of the image,
+    # so measure that slice rather than the whole width.
     front_art = args.art or args.wrap
-    if front_art and not args.no_text and args.scrim <= 0:
-        for label, lo, hi in (("title", 0.68, 0.80), ("author", 0.09, 0.19)):
-            lum = band_luminance(Path(front_art), lo, hi)
-            if lum > 0.55:
-                warn.append(
-                    f"the art under the {label} averages {lum:.0%} luminance — "
-                    f"white type will not read there. Add --scrim 0.6, or pick "
-                    f"art with a dark band where the type goes."
-                )
+    fx_lo, fx_hi = (wr.front_x / wr.width, 1.0) if args.wrap else (0.0, 1.0)
+    bx_lo, bx_hi = (0.0, wr.spine_x / wr.width) if args.wrap else (0.0, 1.0)
+
+    front_lum = band_luminance(Path(front_art), 0.68, 0.80, fx_lo, fx_hi) if front_art else 0.0
+    ink = pick_ink(front_lum, args.ink)
+    back_src = args.wrap or args.back_art
+    back_lum = band_luminance(Path(back_src), 0.45, 0.80, bx_lo, bx_hi) if back_src else 0.0
+    back_ink = pick_ink(back_lum, args.ink)
+
+    if front_art and not args.no_text:
+        print(f"  luminance         front {front_lum:.0%}"
+              + (f", back {back_lum:.0%}" if back_src else "")
+              + f"  -> {'dark' if ink == INK_DARK else 'light'} type")
+        if args.scrim <= 0 and args.ink == "light" and front_lum > 0.55:
+            warn.append(
+                f"the art under the title averages {front_lum:.0%} luminance and "
+                f"--ink light was forced — add --scrim 0.6, or let --ink auto pick "
+                f"dark type instead."
+            )
 
     # Scrims go over the art but under the type.
     if args.scrim > 0:
@@ -460,15 +511,31 @@ def main() -> None:
     # is what publishers do here, and its hard edges are not a blemish: they
     # land exactly on the folds, where the cover physically creases. An edge ON
     # a fold reads as design; an edge NEAR one reads as a mistake.
+    # The band has to contrast with the lettering that goes on it, which means
+    # it follows the ink rather than being a fixed colour: a dark band under
+    # dark type makes the spine unreadable, and a heavy black bar across a pale
+    # delicate cover looks like a printing fault besides.
+    spine_ink = INK_LIGHT
     if args.spine_band and wr.spine >= MIN_SPINE_TEXT:
-        c.setFillColorRGB(*GROUND)
+        band = GROUND if ink == INK_LIGHT else GROUND_LIGHT
+        spine_ink = INK_LIGHT if band == GROUND else INK_DARK
+        c.setFillColorRGB(*band)
         c.rect(mm(wr.spine_x), 0, mm(wr.spine), mm(wr.height), fill=1, stroke=0)
+    elif front_art:
+        # No band: the lettering sits on open art, so read the spine strip.
+        sp_lo, sp_hi = wr.spine_x / wr.width, wr.front_x / wr.width
+        spine_ink = pick_ink(
+            band_luminance(Path(front_art), 0.2, 0.8, sp_lo, sp_hi)
+            if args.wrap else 0.0,
+            args.ink,
+        )
 
     if not args.no_text:
-        cover_text(c, wr, font)
-        spine_text(c, wr, font, args.spine_direction)
-        if args.blurb:
-            back_text(c, wr, font, Path(args.blurb))
+        cover_text(c, wr, font, ink, not args.no_title, not args.no_author)
+        if not args.no_spine:
+            spine_text(c, wr, font, args.spine_direction, spine_ink)
+        if args.blurb and not args.no_blurb:
+            back_text(c, wr, font, Path(args.blurb), back_ink)
 
     if args.guides:
         guides(c, wr)
