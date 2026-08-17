@@ -161,6 +161,36 @@ guessed:
 - **`zimage` ignores the negative prompt.** It is distilled to 8 steps at
   cfg 1.0, which makes classifier-free guidance inert. Anything you do not
   want has to be handled by what you *do* ask for, not by a negative.
+- **`cyberillustrious` is the one that takes direction.** It runs at cfg 5.0,
+  so negatives actually bite — and that turns out to matter more for cover
+  work than raw fidelity. It is also light enough to co-exist with the
+  resident LLM, so it comes back in ~35 s against zimage's ~87 s.
+
+### Which model for a cover, in practice
+
+Tested on the same subject — a London street under the red weed.
+
+| | strength | weakness |
+|---|---|---|
+| `klein` | got the *brief* right: St Paul's dome, Georgian terraces, period handcarts, weed spilling over the cobbles | flat, washed-out rendering; pale skies that fight white type |
+| `zimage` | best painterly quality, real oil-on-canvas surface | drifted anachronistic — yellow road markings, modern vehicles — and no negative prompt to pull it back |
+| `cyberillustrious` | richest rendering, deepest atmosphere, and negatives that work | knows no landmarks: asks for St Paul's produced generic continental Gothic every time |
+
+The decisive practical difference is the negative prompt. CyberIllustrious's
+first attempt looked like a *well-kept* courtyard — potted shrubs, trimmed
+hedges, a building someone still maintained. One round of
+`--neg "potted plant, garden, hedge, topiary, well maintained, tidy"` turned it
+into a dead city. That correction is simply not available on a distilled model,
+where the only lever is the positive prompt.
+
+So: **klein to find the composition, cyberillustrious to render it**, and
+accept that neither will give you a recognisable London landmark. If the dome
+matters, klein is the only one of the three that knows what it is.
+
+One print caveat specific to this subject: the reds cyberillustrious produces
+are extremely saturated. They will shift noticeably in CMYK and come out
+muddier again on a desktop laser. Proof it on the actual printer before
+committing to a red-dominant cover.
 - **Upscaler: `nickelback`, not the default `ultrasharp`.** UltraSharp adds
   fine detail and contrast, which suits photographs and actively harms
   painterly illustration — it turns soft brushwork gritty. Nickelback keeps

@@ -127,6 +127,19 @@ def main() -> None:
 
     import agent  # noqa: E402  (needs the sys.path insert above)
 
+    # The registry splits models by prompt dialect, and feeding one the other's
+    # gets a quietly worse picture rather than an error. Booru models want
+    # comma-separated Danbooru tags; a sentence reads to them as a bag of
+    # loosely related words.
+    style = agent.MODELS.get(args.model, {}).get("style", "")
+    booru = "booru" in style
+    prose = args.prompt.count(",") < 6 or len(max(args.prompt.split(","), key=len)) > 60
+    if booru and prose:
+        print(f"note: {args.model} wants comma-separated Danbooru tags, and this "
+              f"prompt reads as prose — expect weaker adherence")
+    elif not booru and not prose and args.prompt.count(",") > 14:
+        print(f"note: {args.model} wants natural language, not tags")
+
     print(f"panel {args.panel}: {w_mm:.1f} x {h_mm:.1f} mm printed")
     print(f"  latent {lw}x{lh}, upscale {up}x -> {lw*up}x{lh*up} px = {dpi:.0f} dpi")
     print(f"  model {args.model}, upscaler {args.upscaler}")
