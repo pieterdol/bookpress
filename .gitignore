@@ -1,0 +1,10 @@
+# Generated output — all of it rebuilds from source/ and book.toml.
+out/
+source/media/
+__pycache__/
+
+# Cover concepts are scratch: coverart.py does not record seeds, so nothing
+# here is reproducible, and most of it is discards at ~6 MB each. Move the
+# one you actually want into art/chosen/, which IS tracked.
+art/*
+!art/chosen/

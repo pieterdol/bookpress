@@ -1,0 +1,109 @@
+# bookpress — single source of truth for one book.
+#
+# Every measurement is millimetres. The tools convert to points internally;
+# you should never need to think in points.
+#
+# Copy this file per title (book-wotw.toml, book-dracula.toml, ...) and pass
+# it with --spec if it isn't named book.toml.
+
+[book]
+title      = "The War of the Worlds"
+subtitle   = ""
+author     = "H. G. Wells"
+year       = "1898"
+# Shown on the spine. Keep it short; long titles need a thin book to fit.
+spine_title = "The War of the Worlds"
+
+[trim]
+# Final trimmed page size, near B-format (the 129 x 198 UK trade paperback).
+#
+# The height is 194 rather than 198 for a physical reason: 2-up on A4 leaves
+# (297 - 194) / 2 = 8 mm above and below the trim box, and your printer cannot
+# reach the last ~4.5 mm of that, so 194 is about the tallest page that still
+# leaves a head/tail crop mark you can aim a blade at. A5 (148 x 210) leaves
+# nothing at all, which is why it is the wrong size for this job despite
+# fitting A4 exactly. impose.py warns if you push this too far.
+width  = 129.0
+height = 194.0
+
+[paper]
+# Caliper is the thickness of ONE sheet in mm, and it is the number the whole
+# project hinges on. MEASURE IT, do not derive it from gsm: take 100 sheets
+# from the ream you will actually print on, measure the stack with a caliper,
+# divide by 100. Nominal 80 gsm office paper lands around 0.104; bulky
+# uncoated book papers run much thicker for the same weight.
+caliper = 0.104
+
+# The sheet you feed the printer. A4 portrait.
+sheet_width  = 210.0
+sheet_height = 297.0
+
+# Non-printable border your printer physically cannot reach. Most desktop
+# lasers are 4-5 mm on all edges; some are worse at the trailing edge. The
+# tools warn when marks would land inside this band.
+unprintable = 4.5
+
+[interior]
+# Margins measured from the TRIMMED page edge to the text block.
+margin_top    = 16.0
+margin_bottom = 20.0
+margin_outer  = 14.0
+margin_inner  = 13.0
+
+# Gutter: extra spine-side allowance on top of margin_inner, to pay for the
+# swing a glued spine steals. A hand-glued perfect binding does not open
+# flat, so the inner edge of the text rolls away from you and reads tighter
+# than it measures. POD wants ~3 mm here; a double-fan hand binding wants
+# 6-8 mm. Sewn signatures open much flatter — drop to 3-4 mm.
+gutter = 7.0
+
+# memoir only accepts 9/10/11/12/14/17 pt as a class size, so font_size must
+# be one of those. Leading is free — it is applied as a computed \linespread
+# against the class default, so any value works.
+# EB Garamond runs small on the body; 11/15 is a comfortable B-format setting
+# giving roughly 65 characters to the line.
+font_size = "11pt"
+leading   = "15pt"
+
+[binding]
+# "perfect" -> single leaves, cut-and-stack 2-up imposition, glued.
+# "sewn"    -> folded signatures, booklet imposition with creep compensation.
+method = "perfect"
+
+# Only used when method = "sewn". 4 sheets = 16 pages per signature, the
+# usual sweet spot for 80-100 gsm: thick enough to be worth sewing, thin
+# enough that creep stays under a millimetre.
+sheets_per_signature = 4
+
+# Added to the spine width to pay for glue film + mull. A double-fan PVA
+# binding with a gauze lining runs about 1.5 mm; a thin single glue-up is
+# closer to 0.8.
+glue_allowance = 1.5
+
+[imposition]
+# Gap between the two columns on a cut-and-stack sheet. This strip becomes
+# waste when you cut, and it is what gives the guillotine somewhere to land
+# without eating either page. 0 = single cut, no waste, no tolerance.
+column_gap = 10.0
+
+# Duplex flip. Printers disagree, and the setting name in the driver lies
+# about as often as it tells the truth. Print tools/regmark.py first, read
+# the answer off the sheet, then set this once and forget it.
+#   "long"  -> back side mirrored left/right relative to front
+#   "short" -> back side not mirrored
+flip = "long"
+
+[cover]
+# Bleed on the outer edges of the wrap. Only meaningful if you print the
+# cover somewhere that can trim it — a desktop laser cannot print to the
+# edge, so for home-printed covers set this to 0 and trim the cover flush
+# with the block after casing in.
+bleed = 3.0
+
+# Keep all text at least this far from every trim edge and from both spine
+# folds.
+safe = 8.0
+
+# 0 = read the real page count from the built interior PDF, which is what
+# you want. Set it manually only to model a spine before the text is final.
+page_count = 0
