@@ -148,56 +148,88 @@ guessed:
 #   latent 832x1216, upscale 2x -> 1664x2432 px = 309 dpi
 ```
 
-~28 s per image on the RX 6900 XT with `klein` resident, ~63 s cold.
+~35 s per image on the RX 6900 XT with a light model resident; ~76-87 s for
+`zimage`, which has to evict the LLM first.
 
 ### Settings that matter here
 
-- **Model: `zimage`** (Z-Image Turbo), the default. It has a genuinely
-  painterly, oil-on-canvas quality that suits a nineteenth-century novel far
-  better than `klein`'s cleaner digital look. ~85 s per image against klein's
-  ~28 s, so iterate compositions on `--model klein` and re-run the winner on
-  zimage. `krea` is the third natural-language option — more cinematic,
-  heavier. The anime models want Danbooru tags and are the wrong register.
-- **`zimage` ignores the negative prompt.** It is distilled to 8 steps at
-  cfg 1.0, which makes classifier-free guidance inert. Anything you do not
-  want has to be handled by what you *do* ask for, not by a negative.
-- **`cyberillustrious` is the one that takes direction.** It runs at cfg 5.0,
-  so negatives actually bite — and that turns out to matter more for cover
-  work than raw fidelity. It is also light enough to co-exist with the
-  resident LLM, so it comes back in ~35 s against zimage's ~87 s.
-
-### Which model for a cover, in practice
-
-Tested on the same subject — a London street under the red weed.
-
-| | strength | weakness |
-|---|---|---|
-| `klein` | got the *brief* right: St Paul's dome, Georgian terraces, period handcarts, weed spilling over the cobbles | flat, washed-out rendering; pale skies that fight white type |
-| `zimage` | best painterly quality, real oil-on-canvas surface | drifted anachronistic — yellow road markings, modern vehicles — and no negative prompt to pull it back |
-| `cyberillustrious` | richest rendering, deepest atmosphere, and negatives that work | knows no landmarks: asks for St Paul's produced generic continental Gothic every time |
-
-The decisive practical difference is the negative prompt. CyberIllustrious's
-first attempt looked like a *well-kept* courtyard — potted shrubs, trimmed
-hedges, a building someone still maintained. One round of
-`--neg "potted plant, garden, hedge, topiary, well maintained, tidy"` turned it
-into a dead city. That correction is simply not available on a distilled model,
-where the only lever is the positive prompt.
-
-So: **klein to find the composition, cyberillustrious to render it**, and
-accept that neither will give you a recognisable London landmark. If the dome
-matters, klein is the only one of the three that knows what it is.
-
-One print caveat specific to this subject: the reds cyberillustrious produces
-are extremely saturated. They will shift noticeably in CMYK and come out
-muddier again on a desktop laser. Proof it on the actual printer before
-committing to a red-dominant cover.
 - **Upscaler: `nickelback`, not the default `ultrasharp`.** UltraSharp adds
   fine detail and contrast, which suits photographs and actively harms
   painterly illustration — it turns soft brushwork gritty. Nickelback keeps
-  flat colour and soft edges smooth. `generate.py` has no flag for this;
-  `build_workflow` reads an `upscaler` key, which `coverart.py` passes.
+  flat colour and soft edges smooth. `generate.py` had no flag for this until
+  we added one; `build_workflow` reads an `upscaler` key, which
+  `coverart.py` passes.
 - **Never generate at a bigger latent to get a bigger picture.** Enlargement
   happens after the decode, where it cannot invent a second subject.
+- **`coverart.py` warns on dialect mismatch.** Prose sent to a tag model, or
+  tag soup sent to a natural-language one, produces a quietly worse picture
+  rather than an error.
+
+### The models
+
+Three of the nine in `~/Code/comfy-agent/agent.py` were tested for cover work.
+The column that predicts most about how one behaves is **cfg**: at 1.0
+classifier-free guidance is inert, so the negative prompt does nothing at all
+and the positive is your only lever.
+
+| model | prompt dialect | steps / cfg | negatives? | VRAM | observed speed |
+|---|---|---|---|---|---|
+| `zimage` | natural language | 8 / 1.0 | **no** | heavy, evicts the LLM | ~76–87 s |
+| `klein` | natural language | 4 / 1.0 | **no** | heavy, evicts the LLM | ~28 s |
+| `cyberillustrious` | Danbooru tags | 30 / 5.0 | yes | light, co-resident | ~32–38 s |
+
+zimage and klein are marked `direct` in the registry and unload Qwen before
+they run, which is most of why they are slower per image. CyberIllustrious sits
+alongside it. `krea` is the remaining natural-language option and untested
+here; the other five are anime models in the wrong register for a novel.
+
+### Which model for which subject
+
+Tested on three subjects from this book, wraparound and front panel.
+
+| subject | best model | what happened |
+|---|---|---|
+| red weed over a dead London street | `cyberillustrious` | richest rendering and deepest atmosphere of the three |
+| the cylinder in its crater | `zimage` | correct first try, composition exactly as briefed |
+| two walking machines at different distances | `zimage` | correct first try, **three legs counted right**, second machine on the horizon |
+| St Paul's specifically | `klein` | the only one that knows what the dome looks like |
+
+**The boundary worth knowing: `cyberillustrious` cannot draw an unfamiliar
+machine.** It failed the cylinder and the walking machines three times each,
+and not for want of prompting. It is Illustrious-lineage, so its priors are
+figures and environments:
+
+- asked for one large cylinder, it produced *nine* — and raising the weight to
+  `(cylinder:1.7)` made that worse, because **over-weighting multiplies a
+  subject rather than emphasising it**. Second attempt: a field of concrete
+  pillars.
+- asked for a three-legged machine, it produced a giant nude humanoid, holding
+  to that even against `--neg "humanoid robot, biped, arms, hands"`. Negatives
+  that work are still no match for a strong prior.
+
+Conversely, give `cyberillustrious` an environment and it is the best of the
+three — and it was the only one that produced **no anachronisms**, where zimage
+put yellow road markings and modern vehicles into a Victorian street.
+
+So the working split: **`zimage` for machines and objects, `cyberillustrious`
+for places, `klein` when a real landmark has to be recognisable.**
+
+### Vocabulary traps
+
+Both of these cost a generation before they were obvious.
+
+- **"tripod" means *camera tripod*.** On a Danbooru-trained model it is a
+  photography term, and the result was literal camera tripods and telescopes
+  standing in front of a bonfire. Describe the machine; never name it.
+- **"hood" reads as biological.** It is Wells's own word for the machines'
+  upper body, but to a diffusion model a hood is a cowl and a cowl belongs to a
+  creature — the result was an H.R. Giger xenomorph head. *"A smooth domed
+  canopy of riveted brass like an upturned cauldron lid, entirely mechanical,
+  no head and no face"* routes around it, and is also Wells's phrasing.
+
+The general lesson: a word that is evocative in prose may be a well-populated
+category label in a training set. When a subject keeps coming out wrong, suspect
+the noun before you suspect the prompt.
 
 ### What actually went wrong, and the fixes
 
@@ -216,8 +248,8 @@ committing to a red-dominant cover.
 - **Do not let the model draw the title.** `coverart.py` negatives text,
   lettering, watermarks, logos and frames on every generation. Type is set in
   `cover.py` or Scribus, where it stays vector and sharp.
-- **Generate three or four concepts.** The hit rate on a first prompt is low,
-  and 28 s each makes iteration cheap.
+- **Generate three to five concepts.** The hit rate on a first prompt is low,
+  and `--n 5` makes a batch cheap enough to be the default approach.
 
 ### Wrapping around the spine
 
@@ -267,6 +299,11 @@ ComfyUI gives sRGB; presses are CMYK, and saturated blues and greens dull
 noticeably. Only relevant if a cover goes to a commercial press — convert
 last, with a real profile (FOGRA39 for Europe) via Scribus's PDF/X-3 export or
 `magick -profile`. For home laser output, ignore this entirely.
+
+The one case that bites regardless of where it is printed: the reds
+`cyberillustrious` produces are extremely saturated, and a desktop laser will
+render them muddier than the screen suggests. Proof any red-dominant cover on
+the actual printer before committing to it.
 
 ---
 
