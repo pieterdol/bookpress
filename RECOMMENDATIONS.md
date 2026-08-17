@@ -352,6 +352,27 @@ warns:
 `--scrim 0.6` to `0.7` fixes it, and on foggy or overcast art the darkening
 tends to read as weather rather than as an overlay.
 
+### Bleed and where the crop marks go
+
+`--sheet` puts the crop marks on the **trim box**, not on the edge of the
+artwork, and the difference is the whole point of bleed. Marks on the artwork
+edge mean cutting there yields a cover a bleed-width oversized on every side,
+and a cut that wanders outward runs off the picture onto white paper. Marks on
+the trim line mean the art overshoots the cut by `cover.bleed` on all four
+outer edges, so the blade can wander by that much and still land on picture.
+
+The report tells you what to cut to:
+
+    cut to  271.7 x 194.0 mm at the crop marks (3.0 mm of bleed outside them)
+
+**3 mm is about the maximum bleed an A4 sheet will carry** for a B-format wrap.
+At that size the artwork's top and bottom edges sit 5 mm from the paper edge
+and most lasers cannot reach the last 4.5 mm, so the outermost half-millimetre
+of bleed may simply not print. That is survivable — it is the part being cut
+off — but it does mean the vertical bleed is at its limit. Printing the cover
+on A3 and trimming down gives proper margins and a crop mark that is not
+sitting on the artwork.
+
 ### Setting the type by hand — Scribus
 
 `cover.py` sets type well enough to proof with, but it is a script placing

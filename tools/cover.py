@@ -541,13 +541,61 @@ def main() -> None:
         guides(c, wr)
 
     if args.sheet:
-        # Trim marks outside the wrap, on the sheet.
+        # Crop marks go on the TRIM box, not on the edge of the artwork.
+        #
+        # Putting them on the artwork edge is the same as having no bleed: cut
+        # there and the cover comes out bleed-sized, 3 mm over on every side,
+        # and a cut that wanders outward runs off the paper. With the marks
+        # inset by the bleed, the art overshoots the cut line on all four outer
+        # edges, which is the entire purpose of bleed — the blade can wander by
+        # up to that much and still land on picture rather than white paper.
+        #
+        # The arms start a bleed-width out from the corner so they sit clear of
+        # the artwork, and are clamped to what the printer can actually reach.
+        b = wr.bleed
+        tx0, tx1 = b, wr.width - b
+        ty0, ty1 = b, wr.height - b
+        u = spec.unprintable
+        shortest = 99.0
+
         c.setStrokeColorRGB(0, 0, 0)
         c.setLineWidth(0.25)
-        for x in (0, wr.width):
-            for y in (0, wr.height):
-                c.line(mm(x), mm(y - 5 if y == 0 else y + 5), mm(x), mm(y))
-                c.line(mm(x - 5 if x == 0 else x + 5), mm(y), mm(x), mm(y))
+        for tx, sx in ((tx0, -1.0), (tx1, 1.0)):
+            for ty, sy in ((ty0, -1.0), (ty1, 1.0)):
+                # Horizontal arm marks the head/tail cut; vertical marks the
+                # left/right cut. Each runs outward from the trim corner.
+                room_x = (ox + tx - u) if sx < 0 else (page_w - u - ox - tx)
+                room_y = (oy + ty - u) if sy < 0 else (page_h - u - oy - ty)
+                for dx, dy, room in ((sx, 0.0, room_x), (0.0, sy, room_y)):
+                    # Ideally the arm clears the artwork entirely, so the gap is
+                    # a full bleed width. On A4 the vertical margin is smaller
+                    # than that, and insisting would leave half a millimetre of
+                    # mark. The gap shrinks instead: the arm then starts over
+                    # the bleed, which is the strip being cut away regardless.
+                    gap = min(b, max(0.5, room * 0.35))
+                    length = min(5.0, room - gap)
+                    if length < 0.5:
+                        shortest = min(shortest, 0.0)
+                        continue
+                    shortest = min(shortest, length)
+                    x0, y0 = tx + dx * gap, ty + dy * gap
+                    x1, y1 = tx + dx * (gap + length), ty + dy * (gap + length)
+                    # White under black, so the mark reads on a dark cover as
+                    # well as on bare paper.
+                    c.setStrokeColorRGB(1, 1, 1)
+                    c.setLineWidth(1.0)
+                    c.line(mm(x0), mm(y0), mm(x1), mm(y1))
+                    c.setStrokeColorRGB(0, 0, 0)
+                    c.setLineWidth(0.25)
+                    c.line(mm(x0), mm(y0), mm(x1), mm(y1))
+
+        if shortest < 2.0:
+            warn.append(
+                f"crop marks come out {shortest:.1f} mm long — the sheet leaves "
+                f"little room outside the {wr.width:.0f} x {wr.height:.0f} mm wrap "
+                f"once the {u} mm unprintable border is taken off. Use a larger "
+                f"sheet, or cut to a measured stop."
+            )
 
     c.showPage()
     c.save()
@@ -556,6 +604,9 @@ def main() -> None:
     print(wr.report())
     if args.sheet:
         print(f"  centred on        {page_w:g} x {page_h:g} mm sheet")
+        print(f"  cut to            {wr.width - 2 * wr.bleed:.1f} x "
+              f"{wr.height - 2 * wr.bleed:.1f} mm at the crop marks "
+              f"({wr.bleed} mm of bleed outside them)")
     if font == "Times-Roman" and args.font != "Times-Roman":
         warn.append(
             f"'{args.font}' is not available as TrueType; fell back to Times-Roman. "
