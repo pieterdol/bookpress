@@ -54,12 +54,23 @@ The **code and documentation** are MIT — see [LICENSE](LICENSE).
 
 The **cover artwork** in `art/chosen/` was generated locally with ComfyUI —
 Krea 2 Turbo, Z-Image Turbo, FLUX.2 klein and CyberIllustrious, one model per
-image. Purely AI-generated images are, on the current US Copyright Office
-position, not copyrightable for want of human authorship — so the MIT grant is
-not really the operative thing for those files, and you should treat them as
-free to use. Each PNG carries its full workflow, prompt and seed in a `tEXt`
-chunk, so which model made a given image is recorded in the file itself, along
-with everything needed to reproduce it.
+image.
+
+Whether anyone holds copyright in a purely AI-generated image is unsettled, and
+the answer differs by jurisdiction. EU law requires a work to be the author's
+own intellectual creation, and Dutch law asks for an *eigen oorspronkelijk
+karakter en persoonlijk stempel van de maker* — tests that output produced from
+a prompt alone looks unlikely to meet, though it has not been litigated. The US
+Copyright Office has said as much explicitly. The UK is the outlier: s.9(3) of
+the CDPA does protect computer-generated works, attributing them to whoever made
+the arrangements for their creation.
+
+The practical upshot, wherever you are: treat these files as free to use, and do
+not rely on owning them. None of this is legal advice.
+
+Each PNG carries its full workflow, prompt and seed in a `tEXt` chunk, so which
+model made a given image is recorded in the file itself, along with everything
+needed to reproduce it.
 
 The **book text** is not distributed here, and `source/` is gitignored: you
 supply the EPUB, and `source/book.md` is generated from it. *The War of the
