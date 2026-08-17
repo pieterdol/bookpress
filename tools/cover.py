@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import subprocess
 import sys
 from pathlib import Path
@@ -122,7 +123,7 @@ class Wrap:
 # ------------------------------------------------------------------ drawing --
 
 
-def fill_panel(c, img_path: Path, x, y, w, h, warn: list[str]) -> None:
+def fill_panel(c, img_path: Path, x, y, w, h, warn: list[str], quality: int = 92) -> None:
     """Draw an image cropped to cover the panel exactly, centred.
 
     Cover, not fit: a cover with white slivers down one edge looks like a
@@ -147,7 +148,19 @@ def fill_panel(c, img_path: Path, x, y, w, h, warn: list[str]) -> None:
         new_h = int(iw / target)
         box = (0, (ih - new_h) // 2, iw, (ih + new_h) // 2)
     img = img.crop(box).convert("RGB")
-    c.drawImage(ImageReader(img), mm(x), mm(y), mm(w), mm(h))
+
+    if quality:
+        # reportlab embeds a PIL image losslessly, which for a 4864 x 3328
+        # wraparound means a 39 MB PDF — awkward to hand to a print shop and
+        # pointless on paper. Re-encoding as JPEG hands reportlab a DCTDecode
+        # stream instead and costs nothing visible at this quality; presses
+        # have taken JPEG for decades.
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=quality, subsampling=0, optimize=True)
+        buf.seek(0)
+        c.drawImage(ImageReader(buf), mm(x), mm(y), mm(w), mm(h))
+    else:
+        c.drawImage(ImageReader(img), mm(x), mm(y), mm(w), mm(h))
 
 
 def band_luminance(img_path: Path, frac_lo: float, frac_hi: float) -> float:
@@ -351,6 +364,10 @@ def main() -> None:
     ap.add_argument("--no-text", action="store_true", help="art only, set type elsewhere")
     ap.add_argument("--font", default="EB Garamond")
     ap.add_argument("--spine-direction", choices=("down", "up"), default="down")
+    ap.add_argument("--jpeg-quality", type=int, default=92, metavar="Q",
+                    help="JPEG quality for placed art (default 92)")
+    ap.add_argument("--lossless", action="store_true",
+                    help="embed art losslessly; much larger files")
     ap.add_argument("--spine-band", action="store_true",
                     help="solid band across the spine, for wraparound art that "
                          "would otherwise leave the lettering on open picture")
@@ -392,12 +409,13 @@ def main() -> None:
     # outside of the book. Stopping it at the trim line guarantees a white
     # sliver the moment the guillotine wanders half a millimetre.
     b = wr.bleed
+    q = 0 if args.lossless else args.jpeg_quality
     if args.wrap:
-        fill_panel(c, Path(args.wrap), 0, 0, wr.width, wr.height, warn)
+        fill_panel(c, Path(args.wrap), 0, 0, wr.width, wr.height, warn, q)
     if args.back_art:
-        fill_panel(c, Path(args.back_art), 0, 0, wr.tw + b, wr.height, warn)
+        fill_panel(c, Path(args.back_art), 0, 0, wr.tw + b, wr.height, warn, q)
     if args.art:
-        fill_panel(c, Path(args.art), wr.front_x, 0, wr.tw + b, wr.height, warn)
+        fill_panel(c, Path(args.art), wr.front_x, 0, wr.tw + b, wr.height, warn, q)
 
     # White type on a pale sky is the commonest way an otherwise good cover
     # fails, and it is obvious on the page and invisible in the terminal. Check
