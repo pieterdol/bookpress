@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pypdf>=5.0"]
+# ///
 """Generate cover artwork sized from book.toml, via the local ComfyUI.
 
 The point of this over calling generate.py by hand is that the panel geometry
@@ -91,7 +95,8 @@ def main() -> None:
     ap.add_argument("--upscaler", default="nickelback", choices=("nickelback", "ultrasharp"))
     ap.add_argument("--name", default="cover")
     ap.add_argument("--n", type=int, default=1)
-    ap.add_argument("--pages", type=int, default=320, help="only affects --panel wrap")
+    ap.add_argument("--pages", type=int, default=None,
+                    help="page count for --panel wrap; default reads out/interior.pdf")
     ap.add_argument("--out", default=None)
     ap.add_argument("--neg", default="")
     ap.add_argument("--timeout", type=int, default=900)
@@ -101,7 +106,23 @@ def main() -> None:
     out_dir = Path(args.out) if args.out else spec.path.parent / "art"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    w_mm, h_mm = panel_mm(spec, args.panel, args.pages)
+    # A wrap's width includes the spine, so it depends on the real page count.
+    # Defaulting to a guess here would silently produce art of the wrong aspect
+    # ratio, which only shows up as a crop at the very end.
+    pages = args.pages
+    if pages is None and args.panel == "wrap":
+        pdf = spec.path.parent / "out" / "interior.pdf"
+        if not pdf.is_file():
+            raise SystemExit(
+                "--panel wrap needs the page count: build the interior first, "
+                "or pass --pages"
+            )
+        from pypdf import PdfReader
+
+        pages = len(PdfReader(str(pdf)).pages)
+        print(f"read {pages} pages from {pdf.name}")
+
+    w_mm, h_mm = panel_mm(spec, args.panel, pages or 0)
     (lw, lh), up, dpi = pick(w_mm, h_mm)
 
     import agent  # noqa: E402  (needs the sys.path insert above)

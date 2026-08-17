@@ -45,6 +45,7 @@ import bookspec
 from bookspec import mm
 
 MIN_SPINE_TEXT = 6.0  # mm; below this the spine is too narrow to letter
+GROUND = (0.09, 0.09, 0.11)  # panel colour where no art covers
 TARGET_DPI = 300
 
 
@@ -147,6 +148,57 @@ def fill_panel(c, img_path: Path, x, y, w, h, warn: list[str]) -> None:
         box = (0, (ih - new_h) // 2, iw, (ih + new_h) // 2)
     img = img.crop(box).convert("RGB")
     c.drawImage(ImageReader(img), mm(x), mm(y), mm(w), mm(h))
+
+
+def band_luminance(img_path: Path, frac_lo: float, frac_hi: float) -> float:
+    """Mean perceived luminance (0-1) of a horizontal band of the art.
+
+    frac_lo/frac_hi are measured from the BOTTOM of the image, matching the
+    PDF coordinate system the type is placed in.
+    """
+    img = Image.open(img_path).convert("L")
+    w, h = img.size
+    top = int(h * (1.0 - frac_hi))
+    bot = int(h * (1.0 - frac_lo))
+    band = img.crop((0, max(0, top), w, min(h, max(bot, top + 1))))
+    px = list(band.resize((64, 16)).getdata())
+    return sum(px) / len(px) / 255.0
+
+
+def scrim(c, x, y, w, h, strength: float, from_top: bool, fade: str | None = None) -> None:
+    """Lay a fading dark wash over part of the wrap so type can sit on it.
+
+    A cover with busy or pale art has nowhere for white type to live. Every
+    trade paperback solves this the same way — a gradient scrim — and it stays
+    invisible as long as it fades out before the art gets interesting.
+
+    `fade` adds a horizontal fade to nothing at the named edge. On a
+    wraparound that is not decoration: a wash that simply stops at the fold
+    leaves a hard vertical step down the cover, and the eye finds it
+    instantly because nothing else on a printed page has an edge like that.
+    """
+    wsteps, hsteps = (64 if fade else 1), 256
+    layer = Image.new("RGBA", (wsteps, hsteps), (0, 0, 0, 255))
+    alpha = Image.new("L", (wsteps, hsteps))
+    for j in range(hsteps):
+        t = j / (hsteps - 1)              # 0 at the top of the strip
+        v = (1.0 - t) if from_top else t  # fade away from the edge
+        # An exponent below 1 holds the wash open across the middle of its
+        # span rather than collapsing near the edge. A steeper curve looks
+        # tidier in isolation and leaves nothing under the type, which is the
+        # only place the wash exists to serve.
+        v = v ** 0.75
+        for i in range(wsteps):
+            u = i / (wsteps - 1) if wsteps > 1 else 0.0
+            if fade == "right":
+                hmul = (1.0 - u) ** 0.9
+            elif fade == "left":
+                hmul = u ** 0.9
+            else:
+                hmul = 1.0
+            alpha.putpixel((i, j), int(255 * min(1.0, strength) * v * hmul))
+    layer.putalpha(alpha)
+    c.drawImage(ImageReader(layer), mm(x), mm(y), mm(w), mm(h), mask="auto")
 
 
 def guides(c, wr: Wrap) -> None:
@@ -299,6 +351,12 @@ def main() -> None:
     ap.add_argument("--no-text", action="store_true", help="art only, set type elsewhere")
     ap.add_argument("--font", default="EB Garamond")
     ap.add_argument("--spine-direction", choices=("down", "up"), default="down")
+    ap.add_argument("--spine-band", action="store_true",
+                    help="solid band across the spine, for wraparound art that "
+                         "would otherwise leave the lettering on open picture")
+    ap.add_argument("--scrim", type=float, default=0.0, metavar="STRENGTH",
+                    help="0-1 dark gradient over the top and bottom of the front "
+                         "panel so white type reads over pale or busy art (try 0.6)")
     ap.add_argument("--sheet", help="centre the wrap on a sheet, e.g. 297x210")
     args = ap.parse_args()
 
@@ -327,7 +385,7 @@ def main() -> None:
     c.translate(mm(ox), mm(oy))
 
     # Ground colour, so an untouched panel is not white paper by accident.
-    c.setFillColorRGB(0.09, 0.09, 0.11)
+    c.setFillColorRGB(*GROUND)
     c.rect(0, 0, mm(wr.width), mm(wr.height), fill=1, stroke=0)
 
     # Panel art runs out into the bleed on the three edges that face the
@@ -340,6 +398,53 @@ def main() -> None:
         fill_panel(c, Path(args.back_art), 0, 0, wr.tw + b, wr.height, warn)
     if args.art:
         fill_panel(c, Path(args.art), wr.front_x, 0, wr.tw + b, wr.height, warn)
+
+    # White type on a pale sky is the commonest way an otherwise good cover
+    # fails, and it is obvious on the page and invisible in the terminal. Check
+    # the two bands the type actually lands in and say so.
+    front_art = args.art or args.wrap
+    if front_art and not args.no_text and args.scrim <= 0:
+        for label, lo, hi in (("title", 0.68, 0.80), ("author", 0.09, 0.19)):
+            lum = band_luminance(Path(front_art), lo, hi)
+            if lum > 0.55:
+                warn.append(
+                    f"the art under the {label} averages {lum:.0%} luminance — "
+                    f"white type will not read there. Add --scrim 0.6, or pick "
+                    f"art with a dark band where the type goes."
+                )
+
+    # Scrims go over the art but under the type.
+    if args.scrim > 0:
+        # Each wash has to reach past the type it serves, not stop at it: the
+        # title sits at 72% of the panel and the author at 14%.
+        top_h = wr.height * 0.52
+        bot_h = wr.height * 0.34
+        spans_all = bool(args.wrap)
+
+        # On a wraparound the top and bottom washes run the whole width, so
+        # there is no density change at either fold to give them away. With
+        # art on the front only, the back is flat ground and needs nothing.
+        x0 = 0.0 if spans_all else wr.front_x
+        w0 = wr.width if spans_all else wr.tw + b
+        scrim(c, x0, wr.height - top_h, w0, top_h, args.scrim, True)
+        scrim(c, x0, 0, w0, bot_h, args.scrim, False)
+
+        # Body copy needs far more contrast than a display line, so the back
+        # takes an extra wash — faded out horizontally towards the spine so it
+        # meets the front panel at nothing rather than at an edge.
+        if args.wrap or args.back_art:
+            back_h = wr.height * 0.86
+            scrim(c, 0, wr.height - back_h, wr.spine_x, back_h,
+                  args.scrim * 0.75, True, fade="right")
+
+    # A wraparound runs the art straight through the spine, which is where the
+    # lettering has to go and where there is least room to lose. A solid band
+    # is what publishers do here, and its hard edges are not a blemish: they
+    # land exactly on the folds, where the cover physically creases. An edge ON
+    # a fold reads as design; an edge NEAR one reads as a mistake.
+    if args.spine_band and wr.spine >= MIN_SPINE_TEXT:
+        c.setFillColorRGB(*GROUND)
+        c.rect(mm(wr.spine_x), 0, mm(wr.spine), mm(wr.height), fill=1, stroke=0)
 
     if not args.no_text:
         cover_text(c, wr, font)

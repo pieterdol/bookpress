@@ -191,11 +191,45 @@ guessed:
 
 ### Wrapping around the spine
 
-`--panel wrap` sizes a single image across back, spine and front (at 320 pages
-that is 282 × 200 mm, so a 1216×832 latent at 4× to clear 300 dpi). The
-alternative is `--panel front` plus a back sampled from the art — less
+`--panel wrap` sizes a single image across back, spine and front, reading the
+page count from the built interior so the spine allowance is right. At 234
+pages that is 277.7 × 200 mm, which needs a 1216×832 latent at 4× to clear
+300 dpi — it comes out at 423 dpi and takes about the same 85 s.
+
+Compose for it. The front cover is the **right-hand** third, so the subject
+belongs right of centre and the left third wants to stay quiet enough to carry
+the blurb. Saying so explicitly in the prompt works: "the dome on the right
+side of the frame, the left opening out into pale empty mist" produced exactly
+that.
+
+Two problems only appear once the art is actually placed:
+
+- **The spine is where wraparounds fail.** The art runs straight through it,
+  so the lettering ends up on open picture with nothing behind it — and on a
+  13.7 mm spine there is no room to lose. `--spine-band` lays a solid band
+  across it. Its hard edges are not a blemish, because they fall exactly on the
+  folds: an edge *on* a fold reads as design, an edge *near* one reads as a
+  mistake.
+- **Body copy needs much more contrast than a display line.** A title can sit
+  on a light scrim; a blurb cannot. `--scrim` gives the back panel an extra
+  wash, faded out horizontally towards the spine so it meets the front at
+  nothing rather than at a visible step.
+
+The alternative is `--panel front` plus a back sampled from the art — less
 striking, but it never fails, and `cover.py` takes `--art`, `--back-art` and
-`--wrap` so all three approaches are one flag apart.
+`--wrap` so all three are one flag apart.
+
+### White type on pale art
+
+The single commonest way a good cover fails, and it is invisible in a terminal.
+`cover.py` measures the mean luminance of the two bands the type lands in and
+warns:
+
+    warning: the art under the title averages 61% luminance — white type will
+    not read there. Add --scrim 0.6, or pick art with a dark band.
+
+`--scrim 0.6` to `0.7` fixes it, and on foggy or overcast art the darkening
+tends to read as weather rather than as an overlay.
 
 ### Colour
 
