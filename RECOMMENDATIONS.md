@@ -167,21 +167,37 @@ guessed:
 
 ### The models
 
-Three of the nine in `~/Code/comfy-agent/agent.py` were tested for cover work.
+Six of the nine in `~/Code/comfy-agent/agent.py` were tested for cover work.
 The column that predicts most about how one behaves is **cfg**: at 1.0
 classifier-free guidance is inert, so the negative prompt does nothing at all
 and the positive is your only lever.
 
 | model | prompt dialect | steps / cfg | negatives? | VRAM | observed speed |
 |---|---|---|---|---|---|
+| `krea` | natural language | 8 / 1.0 | **no** | heavy, evicts the LLM | ~90 s |
 | `zimage` | natural language | 8 / 1.0 | **no** | heavy, evicts the LLM | ~76–87 s |
 | `klein` | natural language | 4 / 1.0 | **no** | heavy, evicts the LLM | ~28 s |
-| `cyberillustrious` | Danbooru tags | 30 / 5.0 | yes | light, co-resident | ~32–38 s |
+| `cyberillustrious` | Danbooru tags | 30 / 5.0 | yes | light, co-resident | ~32–42 s |
+| `illustrious` | Danbooru tags | 28 / 5.5 | yes | light, co-resident | ~35 s |
+| `animagine` | Danbooru tags | 28 / 6.0 | yes | light, co-resident | ~35 s |
 
-zimage and klein are marked `direct` in the registry and unload Qwen before
-they run, which is most of why they are slower per image. CyberIllustrious sits
-alongside it. `krea` is the remaining natural-language option and untested
-here; the other five are anime models in the wrong register for a novel.
+The natural-language three are marked `direct` in the registry and unload Qwen
+before they run, which is most of why they are slower per image. The tag models
+sit alongside it.
+
+**`krea` is the best of them for this book**, which was not the expectation —
+its registry style says "photorealistic / cinematic", but asked for a
+nineteenth-century oil illustration it delivers one, with a genuine painted
+surface rather than a rendered one. It is also the only model that both knows
+St Paul's *and* renders it well, and the only one that followed a compositional
+instruction ("dome on the right, empty mist on the left") consistently across
+five generations.
+
+**`illustrious` and `animagine` are not usable here.** Two attempts each at all
+three subjects produced no cylinder, no machines, and red *light* rather than
+red vegetation — lurid fantasy ruins in a loose digital-painting style. Whatever
+CyberIllustrious gains from being the semi-realistic derivative, it is not
+present in the base models.
 
 ### Which model for which subject
 
@@ -189,10 +205,17 @@ Tested on three subjects from this book, wraparound and front panel.
 
 | subject | best model | what happened |
 |---|---|---|
-| red weed over a dead London street | `cyberillustrious` | richest rendering and deepest atmosphere of the three |
-| the cylinder in its crater | `zimage` | correct first try, composition exactly as briefed |
-| two walking machines at different distances | `zimage` | correct first try, **three legs counted right**, second machine on the horizon |
-| St Paul's specifically | `klein` | the only one that knows what the dome looks like |
+| red weed over a dead London street | `krea` | correct St Paul's dome, Thames on the left, weed on the buildings — and the composition brief followed in all five |
+| the cylinder in its crater | `krea`, then `zimage` | krea darker and more restrained, zimage more illustrative; both correct first try |
+| two walking machines at different distances | `krea` | best rendering by a distance: brass dome, jointed legs, cable stays, distant second machine every time |
+| anything with a recognisable landmark | `krea` or `klein` | the only two that know what St Paul's looks like |
+
+**Nothing counts legs.** Asked repeatedly for a three-legged machine: klein drew
+four, krea drew four every time, zimage varied between three and four,
+cyberillustrious drew a humanoid. "tripod" is unusable (see below) and "three
+legs" does not constrain the count. If three legs matter, the options are to
+pick a lucky variant, hide the legs in smoke, or lock the geometry with
+ControlNet from a source that happens to have three.
 
 **The boundary worth knowing: `cyberillustrious` cannot draw an unfamiliar
 machine.** It failed the cylinder and the walking machines three times each,
@@ -213,6 +236,42 @@ put yellow road markings and modern vehicles into a Victorian street.
 
 So the working split: **`zimage` for machines and objects, `cyberillustrious`
 for places, `klein` when a real landmark has to be recognisable.**
+
+### Restyling: keeping a composition, changing the look
+
+The models are good at different things, so the useful move is to compose with
+one and repaint with another. Two mechanisms, and they are not interchangeable.
+
+**img2img** (`--init X --denoise N`) starts the sampler from the source instead
+of from noise. Structure loosens as denoise rises, so you are always trading
+fidelity against how much the style may change: ~0.35 shifts palette and
+brushwork, ~0.55 repaints surfaces, past ~0.75 little survives but the
+arrangement of masses.
+
+**ControlNet** (`--init X --controlnet`) conditions on extracted structure
+instead, so geometry holds even at full denoise and the style is free to change
+completely. It needs an SDXL ckpt model as the restyler — `cyberillustrious` is
+the obvious one, being the best renderer of environments and the only tested
+model whose negatives work. It will not load against krea, zimage or klein,
+which are other architectures; `agent.py` says so rather than failing obscurely.
+
+The model is `controlnet-union-sdxl-promax.safetensors` (2.3 GB, xinsir), which
+carries canny, depth, tile and more in one file. ComfyUI has `ControlNetLoader`,
+`ControlNetApplyAdvanced`, `SetUnionControlNetType` and a `Canny` node built in,
+so no custom node pack is needed.
+
+**Use `--cn-mode tile`, not the canny default, for night scenes.** Canny
+conditions on extracted edges, which is excellent for architecture but useless
+where there are none: a dark crater under an empty night sky yields almost no
+edge map, and the first attempt had CyberIllustrious invent an archway and a
+town square in the blank space. Tile conditions on the image itself, so it holds
+composition regardless of contrast — the same source came back with the crater,
+the cylinder's position and angle, and every lantern-bearing figure exactly in
+place, repainted.
+
+`--cn-end` defaults to 0.85, releasing the control before the last steps so the
+model settles its own texture; holding to 1.0 tends to leave edges looking
+traced.
 
 ### Vocabulary traps
 

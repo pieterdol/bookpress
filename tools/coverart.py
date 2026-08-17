@@ -99,6 +99,24 @@ def main() -> None:
                     help="page count for --panel wrap; default reads out/interior.pdf")
     ap.add_argument("--out", default=None)
     ap.add_argument("--neg", default="")
+    ap.add_argument("--init", help="restyle this image instead of starting from noise")
+    ap.add_argument("--denoise", type=float, default=0.5,
+                    help="with --init: 0.35 shifts palette, 0.55 repaints surfaces, "
+                         "0.75+ keeps only the arrangement of masses (default 0.5)")
+    ap.add_argument("--controlnet", nargs="?", const="controlnet-union-sdxl-promax.safetensors",
+                    help="lock composition to --init using a ControlNet; needs an "
+                         "SDXL ckpt model such as cyberillustrious")
+    ap.add_argument("--cn-strength", type=float, default=0.75)
+    ap.add_argument("--cn-mode", default="canny", choices=("canny", "tile"),
+                    help="canny conditions on extracted edges — strong on architecture, "
+                         "but a dark low-contrast source yields almost no edges and the "
+                         "model fills the gaps with invention. tile conditions on the "
+                         "image itself, so it holds composition regardless of contrast")
+    ap.add_argument("--cn-low", type=float, default=0.4, help="canny low threshold")
+    ap.add_argument("--cn-high", type=float, default=0.8, help="canny high threshold")
+    ap.add_argument("--cn-end", type=float, default=0.85,
+                    help="release the control before the end so the model settles "
+                         "its own texture (default 0.85)")
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args()
 
@@ -140,6 +158,19 @@ def main() -> None:
     elif not booru and not prose and args.prompt.count(",") > 14:
         print(f"note: {args.model} wants natural language, not tags")
 
+    # LoadImage resolves bare names against ComfyUI's own input directory, so
+    # the source has to be copied in rather than referenced where it lies.
+    init_name = None
+    if args.init:
+        src = Path(args.init).expanduser()
+        if not src.is_file():
+            raise SystemExit(f"no such image: {src}")
+        init_dir = Path(agent.INPUT_DIR)
+        init_dir.mkdir(parents=True, exist_ok=True)
+        init_name = f"bookpress-init{src.suffix}"
+        shutil.copy2(src, init_dir / init_name)
+        print(f"restyling {src.name} at denoise {args.denoise}")
+
     print(f"panel {args.panel}: {w_mm:.1f} x {h_mm:.1f} mm printed")
     print(f"  latent {lw}x{lh}, upscale {up}x -> {lw*up}x{lh*up} px = {dpi:.0f} dpi")
     print(f"  model {args.model}, upscaler {args.upscaler}")
@@ -154,6 +185,25 @@ def main() -> None:
             "width": lw, "height": lh,
             "upscale": up, "upscaler": args.upscaler,
         }
+        if init_name:
+            if args.controlnet:
+                # ControlNet reads structure from the source and repaints
+                # everything else, so the sampler starts from noise as usual.
+                # Passing init_image as well would blend the source back in and
+                # confuse which mechanism is doing the work.
+                spec_d["cn_image"] = init_name
+                spec_d["controlnet"] = args.controlnet
+                spec_d["cn_strength"] = args.cn_strength
+                spec_d["cn_end"] = args.cn_end
+                if args.cn_mode == "tile":
+                    spec_d["cn_type"] = "tile"
+                    spec_d["cn_preprocess"] = "none"
+                else:
+                    spec_d["cn_low"] = args.cn_low
+                    spec_d["cn_high"] = args.cn_high
+            else:
+                spec_d["init_image"] = init_name
+                spec_d["denoise"] = args.denoise
         print(f"→ {label} …", flush=True)
         try:
             files, secs = agent.generate(spec_d, timeout_s=args.timeout)
