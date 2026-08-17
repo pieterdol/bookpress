@@ -3,8 +3,11 @@ out/
 source/media/
 __pycache__/
 
-# Cover concepts are scratch: coverart.py does not record seeds, so nothing
-# here is reproducible, and most of it is discards at ~6 MB each. Move the
-# one you actually want into art/chosen/, which IS tracked.
+# Cover concepts are scratch: mostly discards at ~6 MB each. Move the one you
+# actually want into art/chosen/, which IS tracked.
+#
+# Each PNG carries its own full ComfyUI workflow in a tEXt chunk — model,
+# prompt, sampler and seed — so a file you keep is exactly reproducible. A
+# file you delete is not, because the seed goes with it.
 art/*
 !art/chosen/
