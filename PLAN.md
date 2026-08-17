@@ -43,6 +43,8 @@ The two tracks are independent except for that one arrow: the page count.
 | `book.toml` | Every measurement for one book. The only file you edit to change geometry. |
 | `interior/novel.tex` | pandoc template: memoir class, mirrored margins, running heads, chapter style. |
 | `interior/build.sh` | EPUB → Markdown, then Markdown → trimmed PDF. Re-enters the container itself. |
+| `tools/epubtrim.py` | Drop the ebook's own front/back matter by editing the spine. |
+| `tools/senorm.py` | Normalise Standard Ebooks markup into headings novel.tex can use. |
 | `tools/bookspec.py` | Shared geometry. Spine width, creep, sanity checks. |
 | `tools/regmark.py` | Duplex registration + printable-area test sheet. |
 | `tools/impose.py` | Cut-and-stack 2-up, or folded signatures with creep. |
@@ -63,10 +65,13 @@ because the host is ostree-immutable.
 ./tools/regmark.py                        # print duplex, read the sheet,
                                           # write flip + unprintable into book.toml
 
-# 1. Text
-./interior/build.sh extract source/wotw.epub   # EPUB → Markdown
-$EDITOR source/book.md                          # clean it up, once
-./interior/build.sh                             # → out/interior.pdf + page count
+# 1. Text — trims the ebook's own front/back matter and normalises the markup
+./interior/build.sh extract source/wotw.epub
+$EDITOR source/book.md              # scene breaks and anything else it left
+./interior/build.sh                 # → out/interior.pdf + page count + spine
+
+#    --keep-boilerplate  keeps titlepage/imprint/colophon/uncopyright
+#    --raw               skips the Standard Ebooks normaliser entirely
 
 # 2. Sheets
 ./tools/impose.py --dry-run               # check the sheet map first

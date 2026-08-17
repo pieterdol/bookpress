@@ -60,8 +60,8 @@ files, and you should treat them as free to use. Each PNG carries its full
 workflow, prompt and seed in a `tEXt` chunk if you want to see how it was made
 or reproduce it.
 
-The **book text** is not distributed here. `source/book.md` is placeholder
-prose for testing the template; you supply your own EPUB. *The War of the
+The **book text** is not distributed here, and `source/` is gitignored: you
+supply the EPUB, and `source/book.md` is generated from it. *The War of the
 Worlds* is public domain (Wells died in 1946), and
 [Standard Ebooks](https://standardebooks.org) dedicate their editions to the
 public domain — but check the status of any title before you commit its text

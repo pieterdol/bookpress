@@ -91,6 +91,14 @@
 \chapterstyle{bookpress}
 \aliaspagestyle{chapter}{empty}
 
+% Part pages, matched to the chapter openings rather than memoir's bold default,
+% which lands like a textbook heading in the middle of a novel. No folio: a part
+% page is a divider, and a number on it draws the eye to nothing.
+\renewcommand{\partnamefont}{\normalfont\small\scshape}
+\renewcommand{\partnumfont}{\normalfont\small\scshape}
+\renewcommand{\parttitlefont}{\normalfont\LARGE\scshape}
+\aliaspagestyle{part}{empty}
+
 % ------------------------------------------------------- pandoc scaffolding --
 % Definitions pandoc's LaTeX writer assumes exist.
 \providecommand{\tightlist}{%
@@ -114,6 +122,42 @@
   \centerline{\normalfont\large *\quad*\quad*}%
   \par\vspace{1.2\onelineskip}%
   \@afterindentfalse\@afterheading}
+\makeatother
+
+% ------------------------------------------------- author's frontmatter pages --
+% Dedication and epigraph are the author's, not the ebook's, so they stay — but
+% they are pages, not sections, and senorm.py hands them over as calls to these.
+\newcommand{\bpdedication}[1]{%
+  \cleardoublepage\thispagestyle{empty}%
+  \begin{vplace}[0.38]\begin{center}\itshape #1\end{center}\end{vplace}}
+
+% #1 is the quotation, #2 the attribution — the order senorm.py emits them in.
+\newcommand{\bpepigraph}[2]{%
+  \cleardoublepage\thispagestyle{empty}%
+  \begin{vplace}[0.38]%
+  \begin{center}%
+    \begin{minipage}{0.78\textwidth}
+      \itshape\small #1\par\vspace{0.9\onelineskip}
+      {\raggedleft\upshape\footnotesize\scshape #2\par}
+    \end{minipage}%
+  \end{center}%
+  \end{vplace}}
+
+% Chapter numbers restart inside each Book, as they do in the original. memoir
+% does not reset them across a \part on its own.
+\makeatletter
+\@addtoreset{chapter}{part}
+% The body arrives from pandoc as one blob, so \mainmatter cannot simply be
+% placed before it — the dedication and epigraph are inside that blob and
+% belong to the frontmatter. Instead the first \part or \chapter switches over,
+% which puts arabic page 1 on the first chapter where it belongs.
+\newif\ifbp@started
+\let\bp@part\part
+\let\bp@chapter\chapter
+\renewcommand{\part}{\bp@begin\bp@part}
+\renewcommand{\chapter}{\bp@begin\bp@chapter}
+\newcommand{\bp@begin}{%
+  \ifbp@started\else\global\bp@startedtrue\mainmatter\pagestyle{bookpress}\fi}
 \makeatother
 
 $for(header-includes)$
@@ -147,8 +191,10 @@ $endfor$
   \vspace{3\onelineskip}
   {\large $author$}\par
   \vfill
+  % No date here on purpose: book.toml's year is the year of first
+  % publication, and printing it under the imprint reads as though this copy
+  % came off a press in 1898. The colophon says it properly instead.
   {\small\scshape $if(imprint)$$imprint$$else$Printed and bound by hand$endif$}\par
-  $if(year)${\small $year$}\par$endif$
 \end{center}
 \end{vplace}
 \cleardoublepage
@@ -172,10 +218,10 @@ $if(toc)$
 \cleardoublepage
 $endif$
 
-% ----------------------------------------------------------------- mainmatter
-\mainmatter
-\pagestyle{bookpress}
-
+% ------------------------------------------------------------------- the book
+% Still in \frontmatter here: the first \part or \chapter in the body switches
+% to \mainmatter, so the author's dedication and epigraph keep roman folios and
+% chapter one starts arabic page 1.
 $body$
 
 \end{document}

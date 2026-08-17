@@ -11,3 +11,10 @@ __pycache__/
 # file you delete is not, because the seed goes with it.
 art/*
 !art/chosen/
+
+# Book text stays out of the repo. The EPUB is yours to supply, book.md is
+# generated from it, and keeping novels out means the licence question never
+# arises for a title whose status is less clear-cut than Wells's.
+source/*.epub
+source/book.md
+source/book.md.orig

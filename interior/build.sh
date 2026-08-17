@@ -25,20 +25,51 @@ OUT="$ROOT/out/interior.pdf"
 
 # ------------------------------------------------------------------ extract --
 if [[ "${1:-}" == "extract" ]]; then
-  EPUB="${2:?usage: build.sh extract <file.epub>}"
+  EPUB="${2:?usage: build.sh extract <file.epub> [--keep-boilerplate] [--raw]}"
+  shift 2
+  KEEP_BOILERPLATE=0
+  RAW=0
+  for a in "$@"; do
+    case "$a" in
+      --keep-boilerplate) KEEP_BOILERPLATE=1 ;;
+      --raw)              RAW=1 ;;
+      *) echo "unknown option: $a" >&2; exit 2 ;;
+    esac
+  done
+
   mkdir -p "$ROOT/source/media"
-  pandoc "$EPUB" \
+  FEED="$EPUB"
+
+  # Drop the ebook's own front and back matter before pandoc sees it. Editing
+  # a thirty-entry spine is unambiguous; finding the same sections in 6,000
+  # lines of Markdown afterwards is not.
+  if [[ $KEEP_BOILERPLATE -eq 0 ]]; then
+    TRIMMED="$ROOT/source/$(basename "${EPUB%.epub}")-trimmed.epub"
+    if python3 "$ROOT/tools/epubtrim.py" "$EPUB" --drop-boilerplate -o "$TRIMMED"; then
+      FEED="$TRIMMED"
+    else
+      echo "note: nothing trimmed, using the EPUB as-is" >&2
+    fi
+  fi
+
+  pandoc "$FEED" \
     --to=markdown \
     --wrap=none \
     --extract-media="$ROOT/source/media" \
     --output="$SRC"
   echo "wrote $SRC"
+
+  # Collapse Standard Ebooks' markup into headings novel.tex can use.
+  if [[ $RAW -eq 0 ]]; then
+    echo
+    python3 "$ROOT/tools/senorm.py" "$SRC"
+  fi
+
   echo
-  echo "Now read it. Things worth fixing before you typeset:"
-  echo "  - Project Gutenberg / Standard Ebooks front and back matter"
-  echo "  - chapter headings: they must be '# Title' for --top-level-division"
+  echo "Now read it. Things the normaliser cannot decide for you:"
   echo "  - scene breaks: replace bare '---' or '* * *' with \\scenebreak"
-  echo "  - hard line breaks left over from the EPUB's own layout"
+  echo "  - any front matter you want kept but repositioned"
+  echo "  - Project Gutenberg boilerplate, if the source was Gutenberg"
   exit 0
 fi
 
@@ -89,7 +120,7 @@ pandoc "$SRC" \
   --from=markdown \
   --template="$ROOT/interior/novel.tex" \
   --pdf-engine=lualatex \
-  --top-level-division=chapter \
+  --top-level-division=part \
   "${ARGS[@]}" \
   --output="$OUT"
 
